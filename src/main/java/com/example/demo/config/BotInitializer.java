@@ -1,6 +1,5 @@
 package com.example.demo.config;
 
-import com.example.demo.services.TelegramBot;
 import lombok.AllArgsConstructor;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;

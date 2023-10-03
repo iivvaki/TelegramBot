@@ -1,53 +1,51 @@
-package com.example.demo.services;
+package com.example.demo.config;
 
-import com.example.demo.config.BotConfig;
+import com.example.demo.model.User;
+import com.example.demo.services.JokeService;
+import com.example.demo.services.UserService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
-import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
-import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-
-import java.util.ArrayList;
+import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 @Component
+@EnableScheduling
+@RequiredArgsConstructor
 public class TelegramBot extends TelegramLongPollingBot {
-    final BotConfig botConfig;
-    public TelegramBot(BotConfig botConfig){
-        this.botConfig = botConfig;
-        List<BotCommand> listOfCommands = new ArrayList<>();
-        listOfCommands.add(new BotCommand("/start", "start the bot"));
-        listOfCommands.add(new BotCommand("/info", "give you some info about this bot"));
-        listOfCommands.add(new BotCommand("/jokes", "bot start to give you jokes"));
-        listOfCommands.add(new BotCommand("/stopjokes", "bot stop to give you jokes"));
-        try {
-            this.execute(new SetMyCommands(listOfCommands, new BotCommandScopeDefault(), null));
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
+    private final BotConfig botConfig;
+    private final UserService userService;
+    private final JokeService jokeService;
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()){
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if(messageText.contains("/jokes")){
+            Optional<User> user = userService.readUsers(chatId);
 
-            }
             switch (messageText) {
                 case "/start":
+                    if (user.isEmpty())
+                        userService.addUser(new User(chatId, update.getMessage().getChat().getFirstName(), true));
                     startCommandReceive(chatId, update.getMessage().getChat().getFirstName());
                     break;
                 case "/info":
                     sendMessage(chatId, "Цей бот буде надсилати тобі кожний день рандомний жарт! Напиши команду /jokes, щоб воно почало працювати");
                     break;
                 case "/jokes":
-
+                    sendDailyMessage();
+                    break;
+                case "/stopjokes":
+                    sendMessage(chatId, "Ви зупинили надсилання жартів.");
+                    userService.setStatus(chatId, false);
+                    break;
                 default:
                     sendMessage(chatId, "Fuck u");
                     break;
@@ -72,6 +70,23 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    @Scheduled(cron = "0 46 23 * * *")
+    public void sendDailyMessage(){
+
+        List<User> users = userService.findAllEnable();
+
+        for(User user : users){
+            if (user.isEnable()){
+                try {
+                    sendMessage(user.getId(), jokeService.getJokes());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+
+    }
+
     @Override
     public String getBotUsername() {
         return botConfig.getName();
@@ -81,4 +96,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     public String getBotToken() {
         return botConfig.getToken();
     }
+
+
 }
